@@ -28,4 +28,8 @@
 //Q1bii
 (define insert
 	(lambda (head, x, p)
-		(
+		(let ((n (find head x)))
+			(if (null? n) h (pairNode n p) )
+		)
+	)
+)
