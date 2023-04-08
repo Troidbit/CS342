@@ -4,6 +4,7 @@ import static reflang.AST.*;
 import static reflang.Value.*;
 import static reflang.Heap.*;
 
+import java.sql.Ref;
 import java.util.List;
 import java.util.ArrayList;
 import java.io.File;
@@ -26,11 +27,35 @@ public class Evaluator implements Visitor<Value> {
   public Value visit(AddExp e, Env env) {
     List<Exp> operands = e.all();
     double result = 0;
+    Value.RefVal loc = null;
+
+    //Check for pointer
     for (Exp exp : operands) {
-      NumVal intermediate = (NumVal) exp.accept(this, env); // Dynamic type-checking
-      result += intermediate.v(); // Semantics of AddExp in terms of the target language.
+      Value intermediate = exp.accept(this, env);
+      if (intermediate instanceof Value.RefVal) {
+        loc = (RefVal) intermediate;
+        break;
+      }
     }
-    return new NumVal(result);
+
+    //Do maths
+
+    for (Exp exp : operands) {
+      if (loc == null) {
+        NumVal intermediate = (NumVal) exp.accept(this, env);
+        result += intermediate.v();
+        continue;
+      }
+      Value intermediate = exp.accept(this, env);
+      if (intermediate instanceof Value.NumVal) {
+        NumVal internumval = (NumVal) intermediate;
+        loc = new RefVal(loc.loc() + (int)internumval.v());
+      }
+    }
+    if (loc == null) {
+      return new NumVal(result);
+    }
+    return loc;
   }
 
   @Override
@@ -90,13 +115,42 @@ public class Evaluator implements Visitor<Value> {
   @Override
   public Value visit(SubExp e, Env env) {
     List<Exp> operands = e.all();
-    NumVal lVal = (NumVal) operands.get(0).accept(this, env);
-    double result = lVal.v();
-    for (int i = 1; i < operands.size(); i++) {
-      NumVal rVal = (NumVal) operands.get(i).accept(this, env);
-      result = result - rVal.v();
+    Value.RefVal loc = null;
+    NumVal lVal = null;
+    Value new_lVal = operands.get(0).accept(this, env);
+    if (new_lVal instanceof Value.RefVal) {
+      loc = (RefVal) new_lVal;
+      lVal = (NumVal) operands.get(1).accept(this, env);
+      operands.remove(1);
+    } else {
+      lVal = (NumVal) new_lVal;
     }
-    return new NumVal(result);
+    double result = lVal.v();
+
+    for (int i = 1; i < operands.size(); i++) {
+      Value rVal = operands.get(i).accept(this, env);
+      if (rVal instanceof Value.RefVal) {
+        loc = (RefVal) rVal;
+        break;
+      }
+    }
+
+    for (int j = 1; j < operands.size(); j++) {
+      if (loc == null) {
+        NumVal rVal = (NumVal) operands.get(j).accept(this, env);
+        result = result - rVal.v();
+        continue;
+      }
+      Value rVal = operands.get(j).accept(this, env);
+      if (rVal instanceof Value.NumVal) {
+        NumVal num_rVal = (NumVal) rVal;
+        loc = new RefVal(loc.loc() - (int)num_rVal.v());
+      }
+    }
+    if (loc==null){
+      return new NumVal(result);
+    }
+    return new RefVal(loc.loc() - (int) result);
   }
 
   @Override
@@ -115,8 +169,12 @@ public class Evaluator implements Visitor<Value> {
       values.add((Value) exp.accept(this, env));
 
     Env new_env = env;
-    for (int index = 0; index < names.size(); index++)
+    for (int index = 0; index < names.size(); index++) {
       new_env = new ExtendEnv(new_env, names.get(index), values.get(index));
+      if (values.get(index) instanceof Value.RefVal) {
+        System.out.printf("Allias created:: Name -> %s ref value -> %s\n", names.get(index),values.get(index).tostring());
+      }
+    }
 
     return (Value) e.body().accept(this, new_env);
   }
@@ -126,6 +184,13 @@ public class Evaluator implements Visitor<Value> {
     String name = e.name();
     Exp value_exp = e.value_exp();
     Value value = (Value) value_exp.accept(this, env);
+    if (value instanceof Value.RefVal) {
+      try {
+        ((GlobalEnv) initEnv).get(e.name());
+        System.out.println("Info: Memory Leak Detected");
+      } catch (Exception exc) {}
+      System.out.printf("Allias created:: Name -> %s ref value -> %s\n", name,value.tostring());
+    }
     ((GlobalEnv) initEnv).extend(name, value);
     return new Value.UnitVal();
   }
@@ -309,8 +374,16 @@ public class Evaluator implements Visitor<Value> {
   @Override
   public Value visit(DerefExp e, Env env) { // New for reflang.
     Exp loc_exp = e.loc_exp();
-    Value.RefVal loc = (Value.RefVal) loc_exp.accept(this, env);
-    return heap.deref(loc);
+    //Value.RefVal loc = (Value.RefVal) loc_exp.accept(this, env);
+    Value loc = loc_exp.accept(this, env);
+
+    if (loc instanceof Value.NumVal) {
+      return heap.deref(new RefVal((int)((NumVal) loc).v()));
+    } else {
+      return heap.deref((RefVal)loc);
+    }
+
+    //return heap.deref(loc);
   }
 
   @Override
@@ -319,8 +392,12 @@ public class Evaluator implements Visitor<Value> {
     Exp lhs = e.lhs_exp();
     // Note the order of evaluation below.
     Value rhs_val = (Value) rhs.accept(this, env);
-    Value.RefVal loc = (Value.RefVal) lhs.accept(this, env);
-    Value assign_val = heap.setref(loc, rhs_val);
+    Value loc = lhs.accept(this, env);
+    if (loc instanceof Value.NumVal) {
+      Value.RefVal convertRef = new RefVal((int)((NumVal) loc).v());
+      return heap.setref(convertRef, rhs_val);
+    }
+    Value assign_val = heap.setref( (Value.RefVal)loc, rhs_val);
     return assign_val;
   }
 

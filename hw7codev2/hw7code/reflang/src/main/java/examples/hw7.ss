@@ -19,7 +19,9 @@
 	(lambda (p x)
 		(if (= (getFst p) x)
 			p
-			(if (null? (getSnd p)) (find (getSnd p``) x) (list)
+			(let ((p1 (deref (getSnd p))))
+				(if (null? p1) (list) (find p1 x)
+				)
 			)
 		)
 	)
@@ -27,9 +29,16 @@
 
 //Q1bii
 (define insert
-	(lambda (head, x, p)
-		(let ((n (find head x)))
-			(if (null? n) h (pairNode n p) )
+	(lambda (head x p)
+		(let ((f (find head x)))
+			(if (null? f) head
+				(let (  (x (deref (getSnd f)))
+						(x1 (set! (getSnd f) p))
+						(x2 (set! (getSnd p) x)))
+
+				x
+				)
+			)
 		)
 	)
 )
