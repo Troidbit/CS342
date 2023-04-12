@@ -1,0 +1,5 @@
+Q2.a
+The lambda expression is ill typed because the parameters require a num, bool, and num types, but the body requires that all three parameters are num type. Type checking would detect this error on the fourth step when the type checker would apply the rule of addition to every
+
+b.
+The lambda expression for question 2b (problem 4) is ill typed because the operands going into the lambda expression as parameters do not match the parameter types. All three parameters have to be type num but the third operand is type bool. The type checker would catch this on the first step which is the call step. The type checker would see in the function call that not all the operands match their respected parameter types in the function declaration.
